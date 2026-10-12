@@ -1,0 +1,66 @@
+---
+title: "CW 1"
+author: "Thaheer"
+date: "2026-10-12"
+output:
+  html_document:
+    toc: true
+    code_folding: hide
+  pdf_document:
+    toc: true
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.align = "center", out.width = "100%")
+```
+
+```{r libraries}
+library(tidyverse)
+library(scales)
+library(patchwork)
+library(ggforce)
+library(GGally)
+
+```
+
+# 1. Question and dataset context
+
+What is the nightly price difference between entire homes and private rooms in the three London boroughs of Westminster, Hackney and Croydon?
+
+**Source** This report uses the detailed London listings file published
+by Inside Airbnb, which collects publicly available Airbnb data and
+distributes it under a Creative Commons Attribution 4.0 licence.
+
+**Structure** The dataset contains 91,954 listings, each row
+representing one individual Airbnb property, scraped between 18 and 23
+September 2026.
+
+**Variables used** This analysis uses each listing's borough, room
+type, advertised price, guest capacity, review score and availability.
+
+
+| Limitation | Explanation |
+|---|---|
+| Advertised, not actual price | The price column shows what the host asks for, not what a guest actually paid. |
+| Self-selected hosts | Only people who chose to list on Airbnb appear here, so the data reflects Airbnb hosts, not London housing generally. |
+| One snapshot in time | The data was collected over one week in September 2026, so it cannot show how prices change by season. |
+| Approximate location | Airbnb shifts each listing's coordinates slightly for host privacy, so only borough-level location can be trusted. |
+
+Because of these limitations, the price comparisons in this report should be read as a description of what hosts in Westminster, Hackney and Croydon currently advertise, not as a measure of true market rents or of how much guests pay in practice.
+
+# 2. Data preparation and workflow
+
+```{r}
+listings <- read_csv("data/listings.csv", show_col_types = FALSE)
+
+dim(listings)
+
+#price column specifically:
+
+listings |> select(price) |> head(10)
+class(listings$price)
+
+```
+
