@@ -22,6 +22,7 @@ library(scales)
 library(patchwork)
 library(ggforce)
 library(GGally)
+library(knitr)
 
 ```
 
@@ -62,5 +63,192 @@ dim(listings)
 listings |> select(price) |> head(10)
 class(listings$price)
 
+```
+
+Filtering the data and fixing price:
+
+```{r}
+
+boroughs <- c("Westminster", "Hackney", "Croydon")
+room_types <- c("Entire home/apt", "Private room")
+
+scope <- listings |>
+  filter(neighbourhood_cleansed %in% boroughs,
+         room_type %in% room_types) |>
+  mutate(
+    price = parse_number(price),     # Converting price col text to number
+    borough = factor(neighbourhood_cleansed, levels = boroughs)
+  )
+
+dim(scope)
+```
+
+```{r}
+
+#Checking for missing price values:
+
+scope |> summarise(missing_price = mean(is.na(price)))
+
+#checking why price is missing, which is the real insight:
+
+scope |>
+  mutate(no_availability = availability_365 == 0) |>
+  group_by(no_availability) |>
+  summarise(missing_price = mean(is.na(price)), n = n())
+```
+
+```{r grp-table}
+grp <- scope |>
+  group_by(borough, room_type) |>
+  summarise(Listings = n(),
+            `With price` = sum(!is.na(price)),
+            `Missing price` = mean(is.na(price)),
+            .groups = "drop")
+
+grp |>
+  mutate(`Missing price` = percent(`Missing price`)) |>
+  rename(Borough = borough, `Room type` = room_type) |>
+  kable(format.args = list(big.mark = ","), align = "llrrr",
+        caption = "Table 1: Listings in scope, and how many lack a price.")
+```
+
+# 3. Exploratory visual analysis
+
+## 3.1 Composition
+
+```{r fig-bar, fig.cap="Figure 1: Share of entire homes vs private rooms, by borough."}
+
+pal_room <- c("Entire home/apt" = "#0072B2", "Private room" = "#E69F00")
+
+
+shares <- scope |>
+  count(borough, room_type) |>
+  group_by(borough) |>
+  mutate(share = n / sum(n)) |>
+  ungroup()
+
+ggplot(shares, aes(borough, share, fill = room_type)) +
+  geom_col(position = "dodge") +
+  scale_fill_manual(values = pal_room) +
+  scale_y_continuous(labels = percent) +
+  labs(x = NULL, y = "Share of listings", fill = "Room type")
+```
+
+**Figure 1** shows that the mix of listing types varies sharply across the three boroughs: entire homes make up 82% of Westminster listings, 66% of Hackney's, but only 54% of Croydon's. A bar chart was chosen because position along a shared baseline is judged more accurately than the angles a pie chart would require (Cleveland and McGill, 1984). This imbalance matters for the main question: because Westminster is dominated by entire homes, any borough-level price comparison must account for room type separately rather than comparing boroughs as a whole.
+
+
+## 3.2 Missing data
+
+```{r fig-missing, fig.cap="Figure 2: Share of missing values by variable."}
+scope |>
+  summarise(Price = mean(is.na(price)),
+            `Review score` = mean(is.na(review_scores_rating)),
+            Bedrooms = mean(is.na(bedrooms)),
+            Accommodates = mean(is.na(accommodates))) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "share") |>
+  mutate(variable = fct_reorder(variable, share)) |>
+  ggplot(aes(share, variable)) +
+  geom_point(size = 3) +
+  scale_x_continuous(labels = percent) +
+  labs(x = "Share of listings with a missing value", y = NULL)
+```
+**Figure 2** ranks the four variables by how often they are missing. Price is the most incomplete at 34%, followed by review score at 22%; bedrooms and guest capacity are essentially complete. A dot plot was used rather than a bar chart because only the position of each point matters here, not an area — this keeps the chart simple and makes the ranking easy to read on one shared scale.
+
+
+```{r fig-miss-avail, fig.cap="Figure 3: Share of listings with no price, by availability."}
+scope |>
+  mutate(no_availability = availability_365 == 0) |>
+  group_by(no_availability) |>
+  summarise(share = mean(is.na(price)), .groups = "drop") |>
+  mutate(no_availability = if_else(no_availability, "No availability", "Some availability")) |>
+  ggplot(aes(no_availability, share)) +
+  geom_col(width = .5) +
+  scale_y_continuous(labels = percent) +
+  labs(x = NULL, y = "Share with no price")
+```
+
+**Figure 3** explains why price is missing so often: among listings with zero days available in the next year, 98% have no price, compared with just 7% of listings that have some availability. This indicates that Airbnb stops publishing a price once a listing is effectively inactive, rather than prices being missing at random. As a result, the comparisons in this report should be read as describing bookable
+listings, not the full stock of properties ever listed on Airbnb. 
+
+
+
+## 3.3 Distribution of price
+
+```{r fig-hist, fig.width=8, fig.height=4, fig.cap="Figure 4: Nightly price on a raw scale (left) and log scale (right)."}
+dat <- scope |> filter(!is.na(price))
+
+p_raw <- ggplot(dat, aes(price)) +
+  geom_histogram(binwidth = 50, boundary = 0) +
+  labs(title = "Raw scale", x = "Price per night", y = "Listings")
+
+p_log <- ggplot(dat, aes(price)) +
+  geom_histogram(bins = 40) +
+  scale_x_log10() +
+  labs(title = "Log scale", x = "Price per night", y = NULL)
+
+p_raw + p_log
+```
+
+
+**Figure 4 (raw vs log histogram)**On the raw scale (Figure 4, left), almost all listings are crushed into a single bar near zero and the x-axis has to stretch out to over £20,000 to fit a handful of extreme outliers, the shape of the typical listing’s price is impossible to see. Taking a log10 transform of the x-axis (right) spreads the lower prices out and compresses the extreme ones, revealing a single, roughly symmetric peak around £100–300 per night. This is the standard fix for right-skewed data with a long tail: it does not change any value, only the spacing of the axis, so it is an honest way to make the typical price visible without deleting or capping the outliers.
+
+```{r fig-density, fig.width=7, fig.height=4, fig.cap="Figure 5: Density of price by room type, faceted by borough."}
+ggplot(dat, aes(price, fill = room_type, colour = room_type)) +
+  geom_density(alpha = .35) +
+  facet_wrap(~ borough) +
+  scale_x_log10() +
+  scale_fill_manual(values = pal_room) +
+  scale_colour_manual(values = pal_room) +
+  labs(x = "Price per night", y = "Density", fill = NULL, colour = NULL)
+```
+
+
+**Figure 5 (density by room type, faceted by borough)**Splitting price by room type and faceting by borough (Figure 5) shows the same pattern repeating in all three areas: the private-room density (orange) sits to the left of the entire-home density (blue), meaning private rooms are cheaper than entire homes everywhere, not just on average across London as a whole. The gap between the two curves also looks widest in Westminster, where the entire-home curve sits well to the right of the other two boroughs’ entire-home curves, a first visual hint that the price gap this report is investigating is not uniform across boroughs, which Figures 6–8 will check more formally.
+
+
+
+## 3.4 Comparing price across boroughs and room types
+
+```{r}
+
+p_box <- ggplot(dat, aes(borough, price, fill = room_type)) +
+  geom_boxplot(outlier.alpha = .3) +
+  scale_y_log10() +
+  scale_fill_manual(values = pal_room) +
+  labs(title = "Box plot", x = NULL, y = "Price per night", fill = NULL)
+
+p_box
+
+
+
+```
+
+```{r}
+p_violin <- ggplot(dat, aes(borough, price, fill = room_type)) +
+  geom_violin(alpha = .7) +
+  scale_y_log10() +
+  scale_fill_manual(values = pal_room) +
+  labs(title = "Violin plot", x = NULL, y = "Price per night", fill = NULL)
+
+p_violin
+```
+
+```{r}
+
+
+set.seed(7413)
+
+dat_sample <- dat |>
+  group_by(borough, room_type) |>
+  slice_sample(n = 400) |>
+  ungroup()
+
+p_sina <- ggplot(dat_sample, aes(borough, price, colour = room_type)) +
+  geom_sina(alpha = .4, size = .8) +
+  scale_y_log10() +
+  scale_colour_manual(values = pal_room) +
+  labs(title = "Sina plot", x = NULL, y = "Price per night", colour = NULL)
+
+p_sina
 ```
 
