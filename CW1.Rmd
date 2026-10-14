@@ -5,6 +5,8 @@ date: "2026-10-12"
 output:
   html_document:
     toc: true
+    toc_float: true
+    theme: flatly
     code_folding: hide
   pdf_document:
     toc: true
@@ -134,8 +136,7 @@ ggplot(shares, aes(borough, share, fill = room_type)) +
   labs(x = NULL, y = "Share of listings", fill = "Room type")
 ```
 
-**Figure 1** shows that the mix of listing types varies sharply across the three boroughs: entire homes make up 82% of Westminster listings, 66% of Hackney's, but only 54% of Croydon's. A bar chart was chosen because position along a shared baseline is judged more accurately than the angles a pie chart would require (Cleveland and McGill, 1984). This imbalance matters for the main question: because Westminster is dominated by entire homes, any borough-level price comparison must account for room type separately rather than comparing boroughs as a whole.
-
+**Figure 1** shows the room-type mix varies sharply by borough: entire homes are 82% of Westminster listings, 66% of Hackney’s, but only 54% of Croydon’s. A bar chart suits this better than a pie chart, since position on a shared baseline is judged more accurately than angle (Cleveland and McGill, 1984). Because Westminster is entire-home-dominated, any borough comparison must account for room type separately.
 
 ## 3.2 Missing data
 
@@ -152,7 +153,7 @@ scope |>
   scale_x_continuous(labels = percent) +
   labs(x = "Share of listings with a missing value", y = NULL)
 ```
-**Figure 2** ranks the four variables by how often they are missing. Price is the most incomplete at 34%, followed by review score at 22%; bedrooms and guest capacity are essentially complete. A dot plot was used rather than a bar chart because only the position of each point matters here, not an area — this keeps the chart simple and makes the ranking easy to read on one shared scale.
+**Figure 2** ranks variables by missingness. Price is least complete at 34%, then review score at 22%; bedrooms and capacity are essentially complete. A dot plot suits a ranking better than a bar chart, since only position, not area, matters here.
 
 
 ```{r fig-miss-avail, fig.cap="Figure 3: Share of listings with no price, by availability."}
@@ -167,9 +168,7 @@ scope |>
   labs(x = NULL, y = "Share with no price")
 ```
 
-**Figure 3** explains why price is missing so often: among listings with zero days available in the next year, 98% have no price, compared with just 7% of listings that have some availability. This indicates that Airbnb stops publishing a price once a listing is effectively inactive, rather than prices being missing at random. As a result, the comparisons in this report should be read as describing bookable
-listings, not the full stock of properties ever listed on Airbnb. 
-
+**Figure 3** explains the price gaps: among listings with zero available days, 98% lack a price, versus 7% of available listings. Airbnb appears to stop publishing a price once a listing is inactive, rather than prices being missing at random. so this report’s comparisons describe bookable listings, not the full stock ever listed.
 
 
 ## 3.3 Distribution of price
@@ -190,8 +189,7 @@ p_raw + p_log
 ```
 
 
-**Figure 4 (raw vs log histogram)**On the raw scale (Figure 4, left), almost all listings are crushed into a single bar near zero and the x-axis has to stretch out to over £20,000 to fit a handful of extreme outliers, the shape of the typical listing’s price is impossible to see. Taking a log10 transform of the x-axis (right) spreads the lower prices out and compresses the extreme ones, revealing a single, roughly symmetric peak around £100–300 per night. This is the standard fix for right-skewed data with a long tail: it does not change any value, only the spacing of the axis, so it is an honest way to make the typical price visible without deleting or capping the outliers.
-
+**Figure 4** compares raw and log scales. On the raw scale (left), almost all listings crowd near zero while the axis stretches past £20,000 for a few outliers, hiding the typical price. The log10 scale (right) reveals one roughly symmetric peak around £100–300. This is the standard fix for a long right tail: it changes only the axis spacing, not the values, making the typical price visible without deleting or capping outliers.
 
 ```{r fig-density, fig.width=7, fig.height=4, fig.cap="Figure 5: Density of price by room type, faceted by borough."}
 ggplot(dat, aes(price, fill = room_type, colour = room_type)) +
@@ -204,7 +202,7 @@ ggplot(dat, aes(price, fill = room_type, colour = room_type)) +
 ```
 
 
-**Figure 5** Splitting price by room type and faceting by borough (Figure 5) shows the same pattern repeating in all three areas: the private-room density (orange) sits to the left of the entire-home density (blue), meaning private rooms are cheaper than entire homes everywhere, not just on average across London as a whole. The gap between the two curves also looks widest in Westminster, where the entire-home curve sits well to the right of the other two boroughs’ entire-home curves, a first visual hint that the price gap this report is investigating is not uniform across boroughs, which Figures 6 will check more formally.
+**Figure 5** facets price density by borough and room type. In all three areas, private rooms (orange) sit left of entire homes (blue). cheaper everywhere, not just on average. The gap looks widest in Westminster, where the entire-home curve extends furthest right. a first hint that the gap is not uniform across boroughs, which Figure 6 checks more formally.
 
 
 
@@ -243,13 +241,12 @@ p_box + p_violin + p_sina
 ```
 
 
-**Figure 6** compares three representations of the same price-by-group comparison, drawn side by side so they can be compared directly. The box plot (left) is compact and flags outliers individually, but compresses each group to five numbers and hides how many listings sit behind each box. The violin plot (centre) restores the shape. For example, Westminster’s entire-home group is visibly wider and slightly bimodal, which the box plot could not show but its smoothing can suggest values beyond what the data actually contains. The sina plot (right) shows every sampled listing individually (400 per group, seeded for reproducibility) alongside its density, confirming the same ordering Westminster highest for both room types, Croydon lowest while also revealing that Croydon’s entire-home cloud is noticeably sparser than Westminster’s or Hackney's. No single version is strictly best; together they justify using the box plot as the primary summary in this report (compact, standard, outlier-aware) while the violin and sina versions confirm it isn’t hiding a misleading shape.
-
+**Figure 6** compares three representations of the same comparison. The box plot (left) is compact and flags outliers, but compresses each group to five numbers. The violin plot (centre) restores shape. Westminster’s entire-home group is visibly wider and slightly bimodal, which the box plot hid, though its smoothing can imply values beyond the data. The sina plot (right) shows every sampled listing (400 per group, seeded) alongside its density, confirming the same ranking while showing Croydon’s entire-home cloud is noticeably sparser. No version is strictly best; together they justify the box plot as the primary summary, with the others confirming it hides no misleading shape.
 
 ## 3.5 Price and capacity
 
 
-```{r}
+```{r fig-capacity, fig.width=11, fig.height=4.5, fig.cap="Figure 7: Price against guest capacity, with a loess smooth, by borough and room type."}
 
 ggplot(dat, aes(accommodates, price, colour = room_type)) +
   geom_jitter(width = .2, alpha = .15, size = .8) +
@@ -261,13 +258,13 @@ ggplot(dat, aes(accommodates, price, colour = room_type)) +
 
 ```
 
-**Figure 7** shows price rising with guest capacity in all three boroughs, but not linearly: in Hackney and Croydon both trend lines flatten above roughly 8–10 guests, suggesting diminishing returns to extra capacity, a pattern a straight-line fit would have missed and which justifies the loess smoother used here. The gap between room types also behaves differently by borough: it stays roughly constant across most of Hackney’s and Croydon’s range, but in Westminster the two lines cross near the top of the scale. This should be read cautiously , very few private-room listings in Westminster sleep more than about 12 guests, so the crossing reflects a handful of noisy points rather than a reliable reversal of the pattern seen everywhere else.
+**Figure 7** shows price rising with capacity in all boroughs, but not linearly: in Hackney and Croydon both lines flatten above roughly 8–10 guests, a diminishing-returns pattern a straight-line fit would miss. The room-type gap stays fairly constant in Hackney and Croydon, but crosses near the top of Westminster’s scale, likely noise, since few Westminster private rooms sleep more than 12 guests, rather than a reliable reversal.
 
 
 ## 3.6 Price and review score
 
 
-```{r}
+```{r fig-review, fig.width=10, fig.height=4.5, fig.cap="Figure 8: Price against review score, by room type."}
 
 dat_reviewed <- dat |> filter(!is.na(review_scores_rating))
 
@@ -280,52 +277,58 @@ ggplot(dat_reviewed, aes(review_scores_rating, price, colour = room_type)) +
 
 ```
 
-**Figure 8** shows a much weaker relationship than Figure 7: review score has little association with price for most of its range, with both trend lines close to flat between scores of about 2 and 4. Only at the very top of the scale does a mild upward tick appear for entire homes, rising to roughly £300 at a perfect score. The low-score end of both lines should be read cautiously, since review scores at Airbnb are heavily skewed toward 4.5–5, leaving few listings to support the trend below about 3. Together, Figures 7 and 8 suggest that guest capacity is a far stronger driver of price than guest satisfaction is.
+**Figure 8** shows a far weaker relationship than Figure 7: both trend lines stay close to flat between scores of 2 and 4, with only a mild rise for entire homes near a perfect score. The low-score end is unreliable, since Airbnb ratings skew heavily toward 4.5–5. Together, Figures 7 and 8 suggest capacity drives price far more than review score does.
 
+## 3.7 Outliers and anomalies
 
+```{r fig-outliers, fig.width=10, fig.height=4.5, fig.cap="Figure 9: Listings above £1,000 per night — where they sit (left) and how they differ (right)."}
 
-## 3.7 Distribution revisited: the ECDF
+dat2 <- dat |>
+  mutate(
+    flag = price > 1000,
+    no_reviews = is.na(review_scores_rating),
+    multi_host = calculated_host_listings_count >= 10
+  )
 
-```{r}
-
-ggplot(dat, aes(price, colour = room_type)) +
-  stat_ecdf(linewidth = 1) +
-  facet_wrap(~ borough) +
-  scale_x_log10() +
-  scale_y_continuous(labels = percent) +
-  scale_colour_manual(values = pal_room) +
-  labs(x = "Price per night", y = "Proportion of listings at or below", colour = NULL)
-
-```
-
-**Figure 9** shows the same price gap as an ECDF, which uses every observation directly rather than relying on a bin width or bandwidth choice. Reading the median from where each curve crosses 50% reproduces the values already seen in Figure 6 (for example, Westminster: £300 for entire homes versus £120 for private rooms), which cross-validates the earlier chart types rather than just repeating them. The private-room curves also rise far more steeply than the entire-home curves, indicating private rooms are concentrated in a narrower price band, while entire homes are spread across a wider range a detail neither the box plot nor the density plot made as directly visible.
-
-## 3.8 Does capacity tell the same story across room types?
-
-```{r}
-
-  ggplot(dat, aes(accommodates, price)) +
-  geom_point(aes(colour = room_type), alpha = .12, size = .7) +
-  geom_smooth(method = "loess", se = FALSE, colour = "black", linetype = "dashed", linewidth = 1) +
-  geom_smooth(aes(colour = room_type), method = "loess", se = FALSE, linewidth = 1) +
+p_out1 <- ggplot(dat2, aes(accommodates, price, colour = flag)) +
+  geom_point(alpha = .3, size = .8) +
+  geom_hline(yintercept = 1000, linetype = "dashed", colour = "grey40") +
   scale_y_log10() +
-  scale_colour_manual(values = pal_room) +
-  labs(x = "Accommodates (guests)", y = "Price per night", colour = NULL)
+  scale_colour_manual(values = c("FALSE" = "grey70", "TRUE" = "#D55E00"),
+                       labels = c("FALSE" = "£1,000 or under", "TRUE" = "Above £1,000")) +
+  labs(x = "Accommodates (guests)", y = "Price per night", colour = NULL,
+       title = "Where they sit")
+
+comp <- dat2 |>
+  group_by(flag) |>
+  summarise(`No reviews` = mean(no_reviews),
+            `Host with 10+ listings` = mean(multi_host, na.rm = TRUE)) |>
+  pivot_longer(-flag, names_to = "trait", values_to = "share")
+
+p_out2 <- ggplot(comp, aes(share, trait, colour = flag)) +
+  geom_point(size = 4) +
+  scale_x_continuous(labels = percent, limits = c(0, 1)) +
+  scale_colour_manual(values = c("FALSE" = "grey70", "TRUE" = "#D55E00"),
+                       labels = c("FALSE" = "£1,000 or under", "TRUE" = "Above £1,000")) +
+  labs(x = "Share of listings", y = NULL, colour = NULL, title = "How they differ")
+
+p_out1 + p_out2
 
 ```
 
-**Figure 10** demonstrates why room type cannot be ignored when modelling this relationship. The pooled trend (black, dashed) tracks the private-room line closely at low capacity, where private rooms dominate the data, but drifts to nearly overlap the entire-home line by 12–16 guests, where private rooms become rare. A single pooled line therefore silently changes which group it represents as capacity increases, overstating what a private room costs at high capacity and understating it at low capacity. This mirrors the reasoning behind keeping room type as an explicit grouping variable throughout this report, rather than pooling boroughs or room types together.
-
+**Figure 9** investigates the extreme prices seen in Figure 4. Listings above £1,000 appear at almost every capacity, including single-guest rooms, an anomaly, since price would normally track capacity. These listings are also more often unreviewed (57% vs. 20%) and from hosts managing ten or more listings (67% vs. 40%), consistent with professional multi-listing hosts posting deliberately high, likely unbooked prices, though intent cannot be confirmed from the data.
 
 # 4. Interpretation and design justification
 
 
-This report set out to answer: what is the nightly price difference between entire homes and private rooms in Westminster, Hackney and Croydon? Across every view in Section 3, the answer is consistent: entire homes cost roughly 2–2.5 times more than private rooms in all three boroughs, with Westminster the most expensive for both room types and Croydon the least. The gap is not an artefact of one chart type it appears identically in the box plot, violin plot, sina plot (Figure 6) and the ECDF (Figure 9), and it holds even after accounting for guest capacity (Figures 7 and 10), which rules out the simplest alternative explanation that the gap is really just a capacity difference in disguise.
+This report asked: what is the nightly price difference between entire homes and private rooms in Westminster, Hackney and Croydon? The answer is consistent across every view in Section 3: entire homes cost roughly 2–2.5 times more in all three boroughs, with Westminster dearest and Croydon cheapest. The gap appears identically in the box, violin and sina plots (Figure 6), and holds after accounting for capacity (Figure 7), ruling out the simplest alternative, that it is really just a capacity difference in disguise.
 
-Several design choices followed directly from principles covered in Weeks 1–3. Colour was kept consistent throughout using a single colour-blind-safe palette (blue/orange) rather than ggplot2’s default red/teal, so that room type stays distinguishable without relying on colour alone. Price was shown on a log scale wherever its distribution was skewed (Figures 4–10), since equal distances on a log axis represent equal ratios rather than equal differences, making the room-type price gap easier to read without deleting or capping any outliers. Where more than one representation of the same comparison existed, more than one was shown (Figure 6’s box/violin/sina, and Figure 10’s pooled-versus-grouped trend), rather than picking a single chart type on faith, because different views reveal and hide different features of the same data. Smoothed trend lines (Figures 7, 8 and 10) describe pattern only; a fitted curve does not establish that capacity, review score or room type causes a change in price, so claims in this report are limited to association. Finally, the report’s structure follows a deliberate progression composition, then distribution, then group comparison, then relationship so that each figure motivates the next analytical question rather than standing alone as an unconnected plot.
+Several design choices follow Weeks 1–3 principles. A single colour-blind-safe palette (blue/orange) replaced ggplot2’s default red/teal, keeping room type distinguishable without relying on colour alone. Price used a log scale wherever skewed (Figures 4–9), since equal distances there represent equal ratios, making the gap readable without deleting outliers. Where more than one representation existed, more than one was shown (Figure 6), since different views reveal different features. Smoothed trends (Figures 7–8) describe pattern only — they do not establish that capacity or review score causes price to change, so claims here are limited to association. The report’s structure — composition, distribution, comparison, relationship, anomalies — lets each figure motivate the next question.
 
 # 5. Limitations and further analysis
 
-This analysis has several limitations beyond those already noted for the dataset itself (Section 1). The exploratory approach used here identifies associations and group differences but does not formally test whether they are statistically significant, or control for several variables at once; a regression model including borough, room type and capacity together would make the relative size of each effect more precise. The reason some listings are missing a price was investigated through availability (Figure 3), but not fully resolved other factors, such as host responsiveness or recent changes to a listing, may also contribute. The high-price outliers visible in the raw histogram (Figure 4) were not investigated further in this report; examining whether they belong to hosts with many other listings, or lack reviews, could clarify whether they represent genuine luxury properties or placeholder prices set unrealistically high. Finally, this report covers only three of London’s 33 boroughs, chosen to represent central, inner and outer London; the same pattern may not hold in boroughs with very different housing markets, so extending the analysis city-wide would be a natural next step.
+This analysis has further limitations. It identifies associations and group differences but does not formally test significance or control for several variables at once; a regression including borough, room type and capacity would isolate each effect’s size. Missing prices were linked to availability (Figure 3) but not fully explained, host responsiveness or recent listing changes may also contribute. The high-price outliers (Figure 9) were linked to missing reviews and multi-listing hosts, but the data cannot confirm whether these prices are deliberate or simply unmaintained. Finally, this report covers only three of London’s 33 boroughs; the same pattern may not hold elsewhere, so extending the analysis city-wide is a natural next step.
+
+
 
 
