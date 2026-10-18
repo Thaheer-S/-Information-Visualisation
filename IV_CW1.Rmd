@@ -1,21 +1,22 @@
 ---
-title: "CW 1"
+title: " Information Visualisation - CW 1"
 author: "Thaheer"
-date: "2026-10-12"
+date: "2026-10-18"
 output:
   html_document:
     toc: true
-    toc_float: true
-    theme: flatly
-    code_folding: hide
   pdf_document:
     toc: true
     latex_engine: xelatex
+header-includes:
+  - \usepackage{caption}
+  - \captionsetup{labelformat=empty}
+  - \usepackage{float}
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
-                      fig.align = "center", out.width = "100%")
+                      fig.align = "center", out.width = "100%", fig.pos = "H")
 ```
 
 ```{r libraries}
@@ -32,17 +33,12 @@ library(knitr)
 
 What is the nightly price difference between entire homes and private rooms in the three London boroughs of Westminster, Hackney and Croydon?
 
-**Source** This report uses the detailed London listings file published
-by Inside Airbnb, which collects publicly available Airbnb data and
+**Source** This report uses the detailed London listings file published by Inside Airbnb, which collects publicly available Airbnb data and
 distributes it under a Creative Commons Attribution 4.0 licence.
 
-**Structure** The dataset contains 91,954 listings, each row
-representing one individual Airbnb property, scraped between 18 and 23
-September 2026.
+**Structure** The dataset contains 91,954 listings, each row representing one individual Airbnb property, scraped between 18 and 23 September 2026.
 
-**Variables used** This analysis uses each listing's borough, room
-type, advertised price, guest capacity, review score and availability.
-
+**Variables used** This analysis uses each listing's borough, room type, advertised price, guest capacity, review score and availability.
 
 | Limitation | Explanation |
 |---|---|
@@ -67,9 +63,10 @@ class(listings$price)
 
 ```
 
-Filtering the data and fixing price:
+
 
 ```{r}
+#Filtering the data and fixing price:
 
 boroughs <- c("Westminster", "Hackney", "Croydon")
 room_types <- c("Entire home/apt", "Private room")
@@ -100,6 +97,7 @@ scope |>
 ```
 
 ```{r grp-table}
+
 grp <- scope |>
   group_by(borough, room_type) |>
   summarise(Listings = n(),
@@ -111,7 +109,7 @@ grp |>
   mutate(`Missing price` = percent(`Missing price`)) |>
   rename(Borough = borough, `Room type` = room_type) |>
   kable(format.args = list(big.mark = ","), align = "llrrr",
-        caption = "Table 1: Listings in scope, and how many lack a price.")
+        caption = "Listings in scope, and how many lack a price.")
 ```
 
 # 3. Exploratory visual analysis
@@ -157,6 +155,7 @@ scope |>
 
 
 ```{r fig-miss-avail, fig.cap="Figure 3: Share of listings with no price, by availability."}
+
 scope |>
   mutate(no_availability = availability_365 == 0) |>
   group_by(no_availability) |>
@@ -166,6 +165,7 @@ scope |>
   geom_col(width = .5) +
   scale_y_continuous(labels = percent) +
   labs(x = NULL, y = "Share with no price")
+
 ```
 
 **Figure 3** explains the price gaps: among listings with zero available days, 98% lack a price, versus 7% of available listings. Airbnb appears to stop publishing a price once a listing is inactive, rather than prices being missing at random. so this report’s comparisons describe bookable listings, not the full stock ever listed.
@@ -174,6 +174,7 @@ scope |>
 ## 3.3 Distribution of price
 
 ```{r fig-hist, fig.width=8, fig.height=4, fig.cap="Figure 4: Nightly price on a raw scale (left) and log scale (right)."}
+
 dat <- scope |> filter(!is.na(price))
 
 p_raw <- ggplot(dat, aes(price)) +
@@ -192,6 +193,7 @@ p_raw + p_log
 **Figure 4** compares raw and log scales. On the raw scale (left), almost all listings crowd near zero while the axis stretches past £20,000 for a few outliers, hiding the typical price. The log10 scale (right) reveals one roughly symmetric peak around £100–300. This is the standard fix for a long right tail: it changes only the axis spacing, not the values, making the typical price visible without deleting or capping outliers.
 
 ```{r fig-density, fig.width=7, fig.height=4, fig.cap="Figure 5: Density of price by room type, faceted by borough."}
+
 ggplot(dat, aes(price, fill = room_type, colour = room_type)) +
   geom_density(alpha = .35) +
   facet_wrap(~ borough) +
@@ -199,6 +201,7 @@ ggplot(dat, aes(price, fill = room_type, colour = room_type)) +
   scale_fill_manual(values = pal_room) +
   scale_colour_manual(values = pal_room) +
   labs(x = "Price per night", y = "Density", fill = NULL, colour = NULL)
+
 ```
 
 
@@ -318,6 +321,7 @@ p_out1 + p_out2
 
 **Figure 9** investigates the extreme prices seen in Figure 4. Listings above £1,000 appear at almost every capacity, including single-guest rooms, an anomaly, since price would normally track capacity. These listings are also more often unreviewed (57% vs. 20%) and from hosts managing ten or more listings (67% vs. 40%), consistent with professional multi-listing hosts posting deliberately high, likely unbooked prices, though intent cannot be confirmed from the data.
 
+
 # 4. Interpretation and design justification
 
 
@@ -328,6 +332,49 @@ Several design choices follow Weeks 1–3 principles. A single colour-blind-safe
 # 5. Limitations and further analysis
 
 This analysis has further limitations. It identifies associations and group differences but does not formally test significance or control for several variables at once; a regression including borough, room type and capacity would isolate each effect’s size. Missing prices were linked to availability (Figure 3) but not fully explained, host responsiveness or recent listing changes may also contribute. The high-price outliers (Figure 9) were linked to missing reviews and multi-listing hosts, but the data cannot confirm whether these prices are deliberate or simply unmaintained. Finally, this report covers only three of London’s 33 boroughs; the same pattern may not hold elsewhere, so extending the analysis city-wide is a natural next step.
+
+
+# References
+
+Cleveland, William S. 1979. "Robust Locally Weighted Regression and Smoothing Scatterplots." Journal of the American Statistical Association 74 (368): 829–36. https://doi.org/10.1080/01621459.1979.10481038.
+
+Cleveland, William S., and Robert McGill. 1984. "Graphical Perception: Theory, Experimentation, and Application to the Development of Graphical Methods." Journal of the American Statistical Association 79 (387): 531–54. https://doi.org/10.1080/01621459.1984.10478080.
+
+Inside Airbnb. 2026. "Get the Data." Accessed October 15, 2026. https://insideairbnb.com.
+
+Wickham, Hadley. 2010. "A Layered Grammar of Graphics." Journal of Computational and Graphical Statistics 19 (1): 3–28. https://doi.org/10.1198/jcgs.2009.07098.
+
+
+# Appendix: Generative AI Integrity Form
+
+Student number: 259059814
+
+Date of Submission: 18-10-2026
+
+- I acknowledge the use of Claude (Anthropic), https://claude.ai, to generate information for background research and at the drafting stage of the writing process with the creation of an outline structure for this Technical Report.
+
+- I acknowledge the use of Claude (Anthropic), https://claude.ai, to generate information for my analytical question.
+
+- I acknowledge the use of Claude (Anthropic), https://claude.ai, to identify improvements in the writing style.
+
+- I acknowledge the use of Claude (Anthropic), https://claude.ai, as an information source to generate materials that were included within my final assessment in my own words.
+
+- I acknowledge the use of Claude (Anthropic), https://claude.ai, to create the images included in this Technical Report.
+
+Declaration
+
+No content generated by AI technologies has been presented as my own work.
+
+Student number: 259059814
+
+Dated: 18-10-2026
+
+
+# Appendix: Session information
+
+```{r}
+sessionInfo()
+```
 
 
 
