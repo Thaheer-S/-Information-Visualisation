@@ -1,0 +1,363 @@
+---
+title: " Information Visualisation - Final Project"
+author: "Thaheer"
+date: "2026-11-24"
+output:
+  html_document:
+    toc: true
+  pdf_document:
+    toc: true
+    latex_engine: xelatex
+header-includes:
+  - \usepackage{caption}
+  - \captionsetup{labelformat=empty}
+  - \usepackage{float}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.align = "center", out.width = "100%", fig.pos = "H")
+```
+
+```{r}
+library(tidyverse)   
+library(scales)       
+library(patchwork)    
+library(GGally)       
+library(sf)           
+library(tidytext)    
+library(plotly)       
+library(knitr) 
+library(ggwordcloud)
+```
+
+# 1. Introduction: question and dataset
+
+Which London boroughs attract the most Airbnb guest demand, and how does that demand relate to price, seasonal patterns in reviews, and what guests say about their stays?
+
+**Source** This project reuses the detailed London listings file examined in the earlier Technical Report, together with two companion files from the same Inside Airbnb release: the borough boundary file and the detailed guest reviews file. All three are published by Inside Airbnb, which compiles publicly available Airbnb data and distributes it under a Creative Commons Attribution 4.0 licence.
+
+**Structure** The listings file contains 91,954 listings, one row per property, scraped between 18 and 23 September 2026. The reviews file contains 2,323,969 reviews, one row per guest review, each carrying the date it was posted and the review's text. The boundary file contains 33 polygon features, one per London borough.
+
+**Variables used** From the listings file this analysis uses each listing's borough, room type, advertised price, and guest-capacity fields. From the reviews file it uses the review date and comment text. From the boundary file it uses each borough's name and boundary, joined to the other two files on borough name.
+
+**Scope** Rather than all 33 boroughs, this project focuses on the ten boroughs with the highest total review volume — used here as a reproducible proxy for guest demand, rather than a subjective choice of "popular" or "touristy" areas.
+
+**Relationship to the earlier Technical Report** This project builds on the Technical Report submitted for CW1, which compared advertised prices between entire-home and private-room listings in three boroughs (Westminster, Hackney and Croydon) and found a substantial price gap between the two room types. That analysis is not repeated here. Instead, this project widens the scope to the ten highest-demand boroughs across London, reframes the investigation around guest demand, and introduces two new data sources — guest reviews and borough boundaries — together with four analytical techniques not used in the earlier report: spatial, time-series, text and interactive visualisation.
+
+| Limitation | Explanation |
+|---|---|
+| Advertised, not actual price | The price column shows what the host asks for, not what a guest actually paid. |
+| Self-selected hosts and reviewers | Only hosts who chose to list, and guests who chose to leave a review, appear in this data — it reflects that self-selected group, not every visitor to London. |
+| No listing-level booking calendar | Listings carry a single snapshot availability count at scrape time, but no per-date calendar of future bookings; review volume is used as a demand proxy instead, which measures guest activity, not occupancy directly. |
+| Approximate location | Airbnb shifts each listing's coordinates slightly for host privacy, so mapping is done at borough level only. |
+| One listings snapshot | The listings file is a single scrape, so price reflects one point in time; only the reviews file carries a genuine time dimension. |
+
+Because of these limitations, the findings in this report describe patterns in advertised prices and guest review activity for the ten boroughs studied, not a complete or unbiased measure of true demand, occupancy, or visitor experience across London.
+
+
+# 2. Data preparation and workflow
+
+```{r load-data}
+listings <- read_csv("data/listings.csv", show_col_types = FALSE)
+reviews  <- read_csv("data/reviews.csv", show_col_types = FALSE)
+boroughs <- st_read("data/neighbourhoods.geojson", quiet = TRUE)
+
+glimpse(listings)
+glimpse(reviews)
+boroughs
+```
+
+```{r}
+
+# Convert price from "$267.50" text to a usable number
+listings <- listings |>
+  mutate(price = parse_number(price))
+
+# Attach each review's borough via its listing, then count reviews per borough
+# -- this count is our demand proxy
+borough_review_volume <- reviews |>
+  left_join(listings |> select(id, neighbourhood_cleansed),
+            by = c("listing_id" = "id")) |>
+  count(neighbourhood_cleansed, name = "review_count", sort = TRUE)
+
+borough_review_volume
+
+```
+
+```{r}
+
+# Keep the 10 boroughs with the most reviews
+top_boroughs <- borough_review_volume |>
+  slice_max(review_count, n = 10) |>
+  pull(neighbourhood_cleansed)
+
+top_boroughs
+
+# Filter all three datasets to this scope
+listings_scope <- listings |>
+  filter(neighbourhood_cleansed %in% top_boroughs)
+
+reviews_scope <- reviews |>
+  semi_join(listings_scope, by = c("listing_id" = "id"))
+
+boroughs_scope <- boroughs |>
+  filter(neighbourhood %in% top_boroughs)
+
+dim(listings_scope)
+dim(reviews_scope)
+boroughs_scope
+```
+```{r}
+borough_review_volume |>
+  filter(neighbourhood_cleansed %in% top_boroughs) |>
+  arrange(desc(review_count)) |>
+  rename(Borough = neighbourhood_cleansed, `Review count` = review_count) |>
+  kable(format.args = list(big.mark = ","),
+        caption = "The ten boroughs selected by total review volume.")
+```
+
+
+# 3. Visual analysis
+
+## 3.1 Spatial (where is demand concentrated)
+
+```{r}
+
+borough_summary <- listings_scope |>
+  group_by(neighbourhood_cleansed) |>
+  summarise(median_price = median(price, na.rm = TRUE),
+            n_listings = n()) |>
+  left_join(borough_review_volume, by = "neighbourhood_cleansed")
+
+map_data <- boroughs_scope |>
+  left_join(borough_summary, by = c("neighbourhood" = "neighbourhood_cleansed"))
+
+map_data
+
+p1 <- ggplot(map_data) +
+  geom_sf(aes(fill = review_count,
+              text = paste0(neighbourhood, ": ", comma(review_count), " reviews")),
+          colour = "white", linewidth = 0.3) +
+  scale_fill_viridis_c(option = "plasma", labels = comma) +
+  labs(fill = "Total reviews") +
+  theme_minimal() +
+  theme(axis.text = element_blank(), axis.ticks = element_blank(),
+        panel.grid = element_blank())
+
+ggplotly(p1, tooltip = "text")
+
+```
+
+
+**Figure 1** shows Westminster has by far the highest total review volume (331,254) among the ten boroughs studied, consistent with its dominant position in CW1's price comparison. This total is partly a function of market size, however — Westminster also has the most listings in scope (10,825) — so part of its lead reflects supply rather than guest demand. This is exactly the distinction Week 8 draws between a count and a rate: a count answers "how many events", a rate answers "how many relative to exposure", and a large count can simply reflect a large underlying population. Adjusting for this by dividing reviews by listings, Camden has the highest reviews-per-listing (32.95, versus Westminster's 30.60) despite having under two-thirds as many listings (6,178) — its individual properties attract disproportionately more guest activity. Read together, the map and the rate table make one argument: Westminster is the larger market, but Camden's listings are, on average, the more in-demand ones.
+
+
+```{r}
+map_data |>
+  st_drop_geometry() |>
+  mutate(reviews_per_listing = review_count / n_listings) |>
+  arrange(desc(reviews_per_listing)) |>
+  select(neighbourhood, review_count, n_listings, reviews_per_listing)
+```
+
+```{r}
+
+p2 <- ggplot(map_data) +
+  geom_sf(aes(fill = median_price,
+              text = paste0(neighbourhood, ": £", round(median_price), " median price")),
+          colour = "white", linewidth = 0.3) +
+  scale_fill_viridis_c(option = "viridis", labels = label_dollar(prefix = "£")) +
+  labs(fill = "Median price\n(£/night)") +
+  theme_minimal()
+
+ggplotly(p2, tooltip = "text") |>
+  layout(xaxis = list(visible = FALSE, showgrid = FALSE),
+         yaxis = list(visible = FALSE, showgrid = FALSE))
+```
+
+**Figure 2** shows median advertised price follows a similar but not identical pattern to Figure 1's demand map: Westminster is again highest (£282), with Kensington and Chelsea close behind (£273) and Camden markedly cheaper (£208) despite recording the second-highest total review volume and the highest reviews-per-listing of all ten boroughs. The three priciest boroughs cluster in the same central-west stretch of inner London, while the five cheapest — Tower Hamlets, Hackney, Southwark, Lambeth and Wandsworth — sit further east and south, roughly £120–130 per night below Westminster. The clearest break from a simple "expensive equals popular" story is Kensington and Chelsea: it is nearly as costly as Westminster but attracts under half its review volume and a lower reviews-per-listing rate than cheaper Camden — guest demand is not simply a function of price. This borough-level mismatch motivates the listing-level question in Section 3.2: if price doesn't line up cleanly with demand across boroughs, what does it line up with within listings?
+
+
+## 3.2 Multivariate
+
+```{r prep-corr}
+corr_vars <- listings_scope |>
+  select(price, accommodates, bedrooms, beds, review_scores_rating,
+         number_of_reviews, availability_365) |>
+  drop_na()
+
+corr_matrix <- cor(corr_vars, method = "spearman")
+
+corr_long <- corr_matrix |>
+  as.data.frame() |>
+  rownames_to_column("var1") |>
+  pivot_longer(-var1, names_to = "var2", values_to = "correlation")
+```
+
+```{r fig-corr-heatmap, fig.cap="Figure 3: Spearman correlation between price and listing characteristics."}
+ggplot(corr_long, aes(var1, var2, fill = correlation)) +
+  geom_tile(colour = "white") +
+  geom_text(aes(label = round(correlation, 2)), size = 3) +
+  scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B",
+                       midpoint = 0, limits = c(-1, 1)) +
+  labs(x = NULL, y = NULL, fill = "Spearman\ncorrelation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+range(reviews_scope$date, na.rm = TRUE)
+sum(is.na(reviews_scope$date))
+```
+
+## 3.3 Time-series
+
+```{r prep-timeseries}
+monthly_reviews <- reviews_scope |>
+  mutate(month = floor_date(date, "month")) |>
+  count(month, name = "review_count")
+
+range(monthly_reviews$month)
+```
+
+```{r fig-monthly-trend, fig.cap="Figure 4: Monthly review volume across the ten boroughs, 2009-2026."}
+ggplot(monthly_reviews, aes(month, review_count)) +
+  geom_line(colour = "#B2182B", linewidth = 0.5) +
+  scale_x_date(date_breaks = "2 years", date_labels = "%Y") +
+  labs(x = NULL, y = "Reviews per month")
+```
+
+**Figure 4** shows guest review activity across the ten boroughs was minimal through 2010–2014 — consistent with Airbnb's early growth in London — then rose gradually through 2015–2019, reaching roughly 10,000 reviews per month by its pre-pandemic peak. A sharp, near-total collapse follows in 2020, down to close to zero, matching the well-documented effect of COVID-19 travel restrictions on short-term lets rather than any issue with the data itself. Recovery from 2021 is not just a return to the old trend but a steep acceleration past it: by 2025–2026 monthly review volume regularly exceeds 30,000–50,000, roughly four to five times the 2019 peak, suggesting substantially higher guest activity in this ten-borough scope than before the pandemic. One caution before reading too much into the final point: the last month (September 2026) shows an apparent sharp drop, but the listings file documents a scrape mid-month (18–23 September), so that month's review count is based on a partial month of data — a data-collection artifact, not evidence the growth has reversed.
+
+
+```{r prep-seasonal}
+seasonal_reviews <- reviews_scope |>
+  filter(date >= as.Date("2022-01-01"), date < as.Date("2026-01-01")) |>
+  mutate(year = year(date), month_num = month(date, label = TRUE)) |>
+  count(year, month_num, name = "review_count") |>
+  group_by(month_num) |>
+  summarise(avg_reviews = mean(review_count), .groups = "drop")
+```
+
+```{r fig-seasonal, fig.cap="Figure 5: Average monthly reviews by calendar month, 2022-2025."}
+ggplot(seasonal_reviews, aes(month_num, avg_reviews)) +
+  geom_col(fill = "#B2182B") +
+  labs(x = NULL, y = "Average reviews per month (2022-2025)")
+```
+
+
+**Figure 5** shows a clear seasonal pattern within a typical year: average monthly reviews are lowest in January and February (around 11,500) — roughly half the July peak (24,600) — then climb steadily from March through June before peaking in mid-summer. Autumn months stay comparatively high, between 20,000 and 22,200, rather than tailing off sharply after summer, suggesting the ten highest-demand boroughs sustain elevated guest activity well beyond the traditional tourist season. This matches general London tourism seasonality — a quiet winter low point, particularly after the December holiday period — and confirms the research question's "seasonal patterns" component is a genuine, recurring annual cycle, distinct from the year-on-year growth trend already shown in Figure 4.
+
+
+## 3.4 Text Visualisation
+
+```{r prep-text-raw}
+set.seed(7413)
+
+reviews_sample <- reviews_scope |>
+  slice_sample(n = 100000)
+
+word_freq_raw <- reviews_sample |>
+  unnest_tokens(word, comments) |>
+  anti_join(stop_words, by = "word") |>
+  count(word, sort = TRUE)
+```
+
+```{r fig-word-raw, fig.cap="Most frequent words before cleaning."}
+word_freq_raw |>
+  slice_max(n, n = 20) |>
+  ggplot(aes(n, fct_reorder(word, n))) +
+  geom_col(fill = "#2166AC") +
+  labs(x = "Count", y = NULL)
+```
+
+The standard stop_words lexicon is English-only, but this chart shows exactly why that isn't enough on its own: "br" (52,559 occurrences, HTML markup leakage from Airbnb's own formatting, not something a guest wrote) sits at the very top, and "de" and "la" — French and Spanish function words — also make the top 20, because these reviews are genuinely multilingual. All three are removed explicitly below, rather than silently, so the decision is visible rather than just asserted.
+
+```{r prep-text-clean}
+custom_stop_words <- tibble(word = c("br", "de", "la", "le", "el", "en", "et"))
+
+word_freq <- word_freq_raw |>
+  anti_join(custom_stop_words, by = "word")
+```
+
+```{r fig-word-compare, fig.width=10, fig.height=5, fig.cap="Figure 6: Top 20 review words after cleaning -- word cloud versus ranked bar chart."}
+top20 <- word_freq |> slice_max(n, n = 20)
+
+p_cloud <- ggplot(top20, aes(label = word, size = n)) +
+  geom_text_wordcloud_area() +
+  scale_size_area(max_size = 20) +
+  theme_minimal() +
+  labs(title = "Word cloud")
+
+p_bar <- ggplot(top20, aes(n, fct_reorder(word, n))) +
+  geom_col(fill = "#2166AC") +
+  labs(x = "Count", y = NULL, title = "Ranked bar chart")
+
+p_cloud + p_bar
+```
+
+**Figure 6** compares two representations of the cleaned top twenty words. The word cloud (left) gives an immediate, at-a-glance impression of dominant themes — size draws the eye straight to "stay", "location", "london" and "clean" — making it well suited to a quick overview for a general audience. The ranked bar chart (right) is preferred here as the primary evidence, however: it encodes count using position along a shared baseline rather than font size, a channel judged far more accurately (Cleveland and McGill, 1984) — the same principle that justified a bar chart over a pie chart in CW1's Figure 1 — so exact differences, such as "location" (32,009) being nearly 50% more frequent than "apartment" (18,856), can be read precisely rather than estimated from relative word size. Beyond ranking, the vocabulary itself is informative: the most common words are overwhelmingly about location ("location", "london", "station", "close", "walk") and the physical property ("clean", "apartment", "flat", "comfortable"), with sentiment words appearing lower down — suggesting location and cleanliness, not price or amenities, dominate what guests choose to mention.
+
+
+## 3.5 Text sentiment by borough
+
+```{r prep-sentiment}
+reviews_with_borough <- reviews_sample |>
+  left_join(listings_scope |> select(id, neighbourhood_cleansed),
+            by = c("listing_id" = "id"))
+
+bing_sentiments <- get_sentiments("bing") |>
+  filter(!word %in% c("die", "tout", "sin"))
+
+borough_sentiment <- reviews_with_borough |>
+  unnest_tokens(word, comments) |>
+  inner_join(bing_sentiments, by = "word") |>
+  count(neighbourhood_cleansed, sentiment) |>
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) |>
+  mutate(pct_positive = positive / (positive + negative) * 100,
+         deviation = pct_positive - 50)
+
+borough_sentiment_long <- borough_sentiment |>
+  mutate(pct_negative = 100 - pct_positive,
+         neighbourhood_cleansed = fct_reorder(neighbourhood_cleansed, pct_positive)) |>
+  select(neighbourhood_cleansed, pct_positive, pct_negative) |>
+  pivot_longer(c(pct_positive, pct_negative), names_to = "sentiment", values_to = "pct") |>
+  mutate(sentiment = factor(if_else(sentiment == "pct_positive", "Positive", "Negative"),
+                             levels = c("Negative", "Positive")))
+```
+
+```{r fig-sentiment, fig.cap="Figure 7: Guest sentiment by borough -- share of sentiment-bearing words that are positive vs negative."}
+ggplot(borough_sentiment_long, aes(x = neighbourhood_cleansed, y = pct, fill = sentiment)) +
+  geom_col() +
+  coord_flip() +
+  scale_fill_manual(values = c(Positive = "#2166AC", Negative = "#B2182B")) +
+  labs(x = NULL, y = "% of sentiment-bearing words", fill = NULL) +
+  theme_minimal()
+```
+
+```{r prep-sentiment-words}
+sentiment_words <- reviews_with_borough |>
+  unnest_tokens(word, comments) |>
+  inner_join(bing_sentiments, by = "word") |>
+  count(word, sentiment, sort = TRUE)
+
+top_positive <- sentiment_words |> filter(sentiment == "positive") |> slice_max(n, n = 10)
+top_negative <- sentiment_words |> filter(sentiment == "negative") |> slice_max(n, n = 10)
+```
+
+```{r fig-sentiment-words, fig.cap="Words contributing most to the sentiment count."}
+p_pos <- ggplot(top_positive, aes(reorder(word, n), n)) +
+  geom_col(fill = "#2166AC") +
+  coord_flip() +
+  labs(title = "Positive-labelled", x = NULL, y = "Occurrences") +
+  theme_minimal()
+
+p_neg <- ggplot(top_negative, aes(reorder(word, n), n)) +
+  geom_col(fill = "#B2182B") +
+  coord_flip() +
+  labs(title = "Negative-labelled", x = NULL, y = "Occurrences") +
+  theme_minimal()
+
+p_pos + p_neg
+```

@@ -3,3 +3,5 @@
 .RData
 .Ruserdata
 Data/listings.csv
+Data/reviews.csv
+.DS_Store
